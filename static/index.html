@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECG Classification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            margin-top: 20px;
+            display: none;
+        }
+        .progress {
+            width: 0%;
+            height: 20px;
+            background-color: #4caf50;
+            border-radius: 5px;
+            text-align: center;
+            color: white;
+        }
+        #result {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        label {
+            display: inline-block;
+            width: 100px;
+            text-align: right;
+            margin-right: 10px;
+        }
+        input[type="text"], select {
+            margin-bottom: 10px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+            text-align: left;
+            display: inline-block;
+        }
+        li {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+        }
+        li input[type="file"] {
+            margin-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ECG Classification</h1>
+        <p>Please provide the following information and upload the files:</p>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div>
+                <label for="sex">Sex:</label>
+                <select name="sex" id="sex" required>
+                    <option value="">Select Sex</option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
+                </select>
+            </div>
+            <div>
+                <label for="age">Age:</label>
+                <input type="number" name="age" id="age" min="0" max="150" required placeholder="Enter age">
+            </div>
+            <p>Upload the following files:</p>
+            <ul>
+                <li>1 Header File (.hea) <input type="file" name="hea_file" accept=".hea" required></li>
+                <li>1 Data File (.dat) <input type="file" name="dat_file" accept=".dat" required></li>
+            </ul>
+            <button type="submit">Convert and Classify ECG</button>
+        </form>
+        <div class="progress-bar" id="progressBar">
+            <div class="progress" id="progress">0%</div>
+        </div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const progressBar = document.getElementById('progressBar');
+            const progress = document.getElementById('progress');
+            const resultDiv = document.getElementById('result');
+
+            progressBar.style.display = 'block';
+            resultDiv.textContent = '';
+
+            // Simulate progress
+            let percentage = 0;
+            const interval = setInterval(() => {
+                percentage += 10;
+                progress.style.width = percentage + '%';
+                progress.textContent = percentage + '%';
+                if (percentage >= 100) clearInterval(interval);
+            }, 200);
+
+            try {
+                const response = await fetch('/classify-ecg/', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.textContent = `Predicted Rhythm: ${data.rhythm}`;
+                } else {
+                    resultDiv.textContent = `Error: ${data.detail}`;
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+            } finally {
+                setTimeout(() => {
+                    progressBar.style.display = 'none';
+                    progress.style.width = '0%';
+                    progress.textContent = '0%';
+                }, 1000);
+            }
+        });
+    </script>
+</body>
+</html>
