@@ -5,7 +5,6 @@ import os
 import shutil
 import wfdb
 import numpy as np
-import pandas as pd
 import joblib
 import tempfile
 import uvicorn
@@ -13,17 +12,39 @@ import matplotlib.pyplot as plt
 import io
 import base64
 from scipy.signal import resample
+import tensorflow as tf
+import gcsfs
 
 app = FastAPI()
 
 # Mount static directory for serving HTML
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Load the trained model and label encoder
+# Google Cloud Storage setup
+GCS_BUCKET = "ludb-ecg-models"  # Replace with your bucket name
+MODEL_FILES = {
+    "ludb_rf_model.pkl": f"gs://{GCS_BUCKET}/ludb_rf_model.pkl",
+    "ludb_lr_model.pkl": f"gs://{GCS_BUCKET}/ludb_lr_model.pkl",
+    "ludb_lstm_model.h5": f"gs://{GCS_BUCKET}/ludb_lstm_model.h5",
+    "ludb_cnn_model.h5": f"gs://{GCS_BUCKET}/ludb_cnn_model.h5",
+    "label_encoder.pkl": f"gs://{GCS_BUCKET}/label_encoder.pkl"
+}
+
+# Download models from GCS
+fs = gcsfs.GCSFileSystem()
+for local_file, gcs_path in MODEL_FILES.items():
+    if not os.path.exists(local_file):
+        print(f"Downloading {local_file} from {gcs_path}...")
+        fs.get(gcs_path, local_file)
+
+# Load the trained models and label encoder
 rf_model = joblib.load("ludb_rf_model.pkl")
+lr_model = joblib.load("ludb_lr_model.pkl")
+lstm_model = tf.keras.models.load_model("ludb_lstm_model.h5")
+cnn_model = tf.keras.models.load_model("ludb_cnn_model.h5")
 label_encoder = joblib.load("label_encoder.pkl")
 
-# Target parameters for LUDB compatibility
+# Target parameters
 TARGET_DURATION = 10  # seconds
 TARGET_FS = 500  # Hz
 TARGET_SAMPLES = TARGET_DURATION * TARGET_FS  # 5000 samples per lead
@@ -33,27 +54,23 @@ def standardize_signal(signals, original_fs):
     current_samples = signals.shape[0]
     current_duration = current_samples / original_fs
 
-    # Resample to 500 Hz
     if original_fs != TARGET_FS:
         num_samples_new = int(current_duration * TARGET_FS)
         signals = resample(signals, num_samples_new, axis=0)
 
-    # Adjust to exactly 10 seconds (5000 samples at 500 Hz)
     current_samples = signals.shape[0]
     if current_samples > TARGET_SAMPLES:
-        # Truncate to first 10 seconds
         signals = signals[:TARGET_SAMPLES, :]
     elif current_samples < TARGET_SAMPLES:
-        # Pad with zeros to reach 10 seconds
         pad_length = TARGET_SAMPLES - current_samples
         signals = np.pad(signals, ((0, pad_length), (0, 0)), mode='constant', constant_values=0)
 
     return signals
 
 def plot_ecg_signal(signals, lead_names):
-    """Generate a plot of the standardized 12-lead ECG signal and return it as a base64 string."""
-    num_samples = signals.shape[0]  # Should be 5000 after standardization
-    time = np.arange(num_samples) / TARGET_FS  # Time axis in seconds at 500 Hz
+    """Generate a plot of the standardized 12-lead ECG signal."""
+    num_samples = signals.shape[0]
+    time = np.arange(num_samples) / TARGET_FS
 
     fig, axes = plt.subplots(12, 1, figsize=(10, 12), sharex=True)
     for i in range(12):
@@ -70,6 +87,13 @@ def plot_ecg_signal(signals, lead_names):
     plt.close(fig)
     return img_base64
 
+def get_top_3_rhythms(probabilities, model_name):
+    """Extract the top 3 rhythms and their confidences from a model's probabilities."""
+    top_3_indices = np.argsort(probabilities)[-3:][::-1]
+    top_3_confidences = probabilities[top_3_indices]
+    top_3_rhythms = label_encoder.inverse_transform(top_3_indices)
+    return list(zip(top_3_rhythms, top_3_confidences))
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     with open("static/index.html", "r") as f:
@@ -80,9 +104,7 @@ async def classify_ecg(
     dat_file: UploadFile = File(...),
     hea_file: UploadFile = File(...)
 ):
-    # Create temporary directory to store uploaded files
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Save uploaded files
         dat_path = os.path.join(temp_dir, dat_file.filename)
         hea_path = os.path.join(temp_dir, hea_file.filename)
         with open(dat_path, "wb") as f:
@@ -90,28 +112,58 @@ async def classify_ecg(
         with open(hea_path, "wb") as f:
             shutil.copyfileobj(hea_file.file, f)
 
-        # Convert to WFDB record
         record_name = os.path.splitext(dat_file.filename)[0]
         try:
             record = wfdb.rdrecord(os.path.join(temp_dir, record_name))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error processing ECG files: {str(e)}")
 
-        # Standardize the signal length and frequency
         signals = standardize_signal(record.p_signal, record.fs)
+        flattened_signal = signals.flatten()
+        reshaped_signal = signals.reshape(1, TARGET_SAMPLES, 12)
 
-        # Extract 12-lead signals for prediction
-        flattened_signal = signals.flatten()  # Always 60,000 values (5000 * 12)
+        # Predict with all models and get top 3 rhythms
+        # Random Forest
+        rf_prob = rf_model.predict_proba(flattened_signal.reshape(1, -1))[0]
+        rf_top_3 = get_top_3_rhythms(rf_prob, "Random Forest")
+        rf_results = [(rhythm, confidence, "Random Forest") for rhythm, confidence in rf_top_3]
 
-        # Predict rhythm (no sex or age features)
-        prediction = rf_model.predict(flattened_signal.reshape(1, -1))
-        rhythm = label_encoder.inverse_transform(prediction)[0]
+        # Logistic Regression
+        lr_prob = lr_model.predict_proba(flattened_signal.reshape(1, -1))[0]
+        lr_top_3 = get_top_3_rhythms(lr_prob, "Logistic Regression")
+        lr_results = [(rhythm, confidence, "Logistic Regression") for rhythm, confidence in lr_top_3]
 
-        # Generate ECG plot using the standardized signal
+        # LSTM
+        lstm_prob = lstm_model.predict(reshaped_signal, verbose=0)[0]
+        lstm_top_3 = get_top_3_rhythms(lstm_prob, "LSTM")
+        lstm_results = [(rhythm, confidence, "LSTM") for rhythm, confidence in lstm_top_3]
+
+        # CNN
+        cnn_prob = cnn_model.predict(reshaped_signal, verbose=0)[0]
+        cnn_top_3 = get_top_3_rhythms(cnn_prob, "CNN")
+        cnn_results = [(rhythm, confidence, "CNN") for rhythm, confidence in cnn_top_3]
+
+        # Combine all results and get the overall top 3
+        all_results = rf_results + lr_results + lstm_results + cnn_results
+        all_results.sort(key=lambda x: x[1], reverse=True)  # Sort by confidence
+        top_3_overall = all_results[:3]  # Take the top 3
+
+        # Format the top 3 rhythms
+        top_3_rhythms = []
+        for rhythm, confidence, model in top_3_overall:
+            top_3_rhythms.append({
+                "rhythm": rhythm,
+                "confidence": f"{confidence:.2f}",
+                "model": model
+            })
+
+        # Generate ECG plot
         ecg_plot_base64 = plot_ecg_signal(signals, record.sig_name)
 
-        # Return both the rhythm and the plot
-        return {"rhythm": rhythm, "ecg_plot": ecg_plot_base64}
+        return {
+            "top_3_rhythms": top_3_rhythms,
+            "ecg_plot": ecg_plot_base64
+        }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
