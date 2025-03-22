@@ -31,7 +31,6 @@ cd ludb-ecg-classification
 2. Set Up a Virtual Environment
 python -m venv ludb_env
 source ludb_env/bin/activate  # macOS/Linux
-# or
 ludb_env\Scripts\activate     # Windows
 
 3. Install Dependencies
