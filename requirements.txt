@@ -1,8 +1,9 @@
-fastapi 
-uvicorn 
-wfdb 
-pandas 
-numpy 
-scikit-learn 
-joblib 
+fastapi
+uvicorn
+wfdb
+pandas
+numpy
+scikit-learn
+joblib
 python-multipart
+matplotlib

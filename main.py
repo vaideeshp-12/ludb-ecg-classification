@@ -9,6 +9,9 @@ import pandas as pd
 import joblib
 import tempfile
 import uvicorn
+import matplotlib.pyplot as plt
+import io
+import base64
 
 app = FastAPI()
 
@@ -23,6 +26,30 @@ label_encoder = joblib.load("label_encoder.pkl")
 async def read_root():
     with open("static/index.html", "r") as f:
         return f.read()
+
+def plot_ecg_signal(record):
+    """Generate a plot of the 12-lead ECG signal and return it as a base64 string."""
+    signals = record.p_signal  # Shape: (samples, 12)
+    lead_names = record.sig_name  # List of lead names (e.g., ['I', 'II', ...])
+    num_samples = signals.shape[0]
+    time = np.arange(num_samples) / record.fs  # Time axis in seconds
+
+    # Create a 12-subplot figure (one for each lead)
+    fig, axes = plt.subplots(12, 1, figsize=(10, 12), sharex=True)
+    for i in range(12):
+        axes[i].plot(time, signals[:, i], label=lead_names[i])
+        axes[i].set_ylabel(lead_names[i])
+        axes[i].grid(True)
+    axes[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+
+    # Save plot to a BytesIO buffer and encode as base64
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=100)
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    plt.close(fig)  # Close the figure to free memory
+    return img_base64
 
 @app.post("/classify-ecg/")
 async def classify_ecg(
@@ -57,7 +84,7 @@ async def classify_ecg(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error processing ECG files: {str(e)}")
 
-        # Extract 12-lead signals
+        # Extract 12-lead signals for prediction
         signals = record.p_signal  # Shape: (samples, 12)
         flattened_signal = signals.flatten()
 
@@ -71,7 +98,11 @@ async def classify_ecg(
         prediction = rf_model.predict(combined_features)
         rhythm = label_encoder.inverse_transform(prediction)[0]
 
-        return {"rhythm": rhythm}
+        # Generate ECG plot
+        ecg_plot_base64 = plot_ecg_signal(record)
+
+        # Return both the rhythm and the plot
+        return {"rhythm": rhythm, "ecg_plot": ecg_plot_base64}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)

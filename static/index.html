@@ -11,7 +11,7 @@
             text-align: center;
         }
         .container {
-            max-width: 600px;
+            max-width: 800px;
             margin: auto;
         }
         .progress-bar {
@@ -32,6 +32,10 @@
         #result {
             margin-top: 20px;
             font-weight: bold;
+        }
+        #ecg-plot {
+            margin-top: 20px;
+            max-width: 100%;
         }
         label {
             display: inline-block;
@@ -86,6 +90,7 @@
             <div class="progress" id="progress">0%</div>
         </div>
         <div id="result"></div>
+        <img id="ecg-plot" src="" alt="ECG Plot" style="display: none;">
     </div>
 
     <script>
@@ -96,9 +101,11 @@
             const progressBar = document.getElementById('progressBar');
             const progress = document.getElementById('progress');
             const resultDiv = document.getElementById('result');
+            const ecgPlotImg = document.getElementById('ecg-plot');
 
             progressBar.style.display = 'block';
             resultDiv.textContent = '';
+            ecgPlotImg.style.display = 'none'; // Hide plot until new one is ready
 
             // Simulate progress
             let percentage = 0;
@@ -118,6 +125,8 @@
 
                 if (response.ok) {
                     resultDiv.textContent = `Predicted Rhythm: ${data.rhythm}`;
+                    ecgPlotImg.src = `data:image/png;base64,${data.ecg_plot}`;
+                    ecgPlotImg.style.display = 'block';
                 } else {
                     resultDiv.textContent = `Error: ${data.detail}`;
                 }
