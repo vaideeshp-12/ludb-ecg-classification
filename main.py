@@ -8,12 +8,19 @@ import numpy as np
 import joblib
 import tempfile
 import uvicorn
+import matplotlib
+matplotlib.use('Agg')  # Set non-interactive backend
 import matplotlib.pyplot as plt
 import io
 import base64
 from scipy.signal import resample
 import tensorflow as tf
 import gcsfs
+import sys
+
+# Debug: Log Python and TensorFlow versions
+print(f"Python version: {sys.version}")
+print(f"TensorFlow version: {tf.__version__}")
 
 app = FastAPI()
 
@@ -21,7 +28,7 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Google Cloud Storage setup
-GCS_BUCKET = "ludb-ecg-models"  # Replace with your bucket name
+GCS_BUCKET = "ludb-ecg-models2"  # Updated bucket name
 MODEL_FILES = {
     "ludb_rf_model.pkl": f"gs://{GCS_BUCKET}/ludb_rf_model.pkl",
     "ludb_lr_model.pkl": f"gs://{GCS_BUCKET}/ludb_lr_model.pkl",
@@ -34,15 +41,54 @@ MODEL_FILES = {
 fs = gcsfs.GCSFileSystem()
 for local_file, gcs_path in MODEL_FILES.items():
     if not os.path.exists(local_file):
-        print(f"Downloading {local_file} from {gcs_path}...")
-        fs.get(gcs_path, local_file)
+        try:
+            print(f"Downloading {local_file} from {gcs_path}...")
+            fs.get(gcs_path, local_file)
+            print(f"Successfully downloaded {local_file}")
+        except Exception as e:
+            print(f"Error downloading {local_file} from {gcs_path}: {str(e)}")
+            raise  # Re-raise the exception to fail startup if downloads fail
 
 # Load the trained models and label encoder
-rf_model = joblib.load("ludb_rf_model.pkl")
-lr_model = joblib.load("ludb_lr_model.pkl")
-lstm_model = tf.keras.models.load_model("ludb_lstm_model.h5")
-cnn_model = tf.keras.models.load_model("ludb_cnn_model.h5")
-label_encoder = joblib.load("label_encoder.pkl")
+try:
+    print("Loading Random Forest model...")
+    rf_model = joblib.load("ludb_rf_model.pkl")
+    print("Random Forest model loaded successfully")
+except Exception as e:
+    print(f"Error loading Random Forest model: {str(e)}")
+    raise
+
+try:
+    print("Loading Logistic Regression model...")
+    lr_model = joblib.load("ludb_lr_model.pkl")
+    print("Logistic Regression model loaded successfully")
+except Exception as e:
+    print(f"Error loading Logistic Regression model: {str(e)}")
+    raise
+
+try:
+    print("Loading LSTM model...")
+    lstm_model = tf.keras.models.load_model("ludb_lstm_model.h5")
+    print("LSTM model loaded successfully")
+except Exception as e:
+    print(f"Error loading LSTM model: {str(e)}")
+    raise
+
+try:
+    print("Loading CNN model...")
+    cnn_model = tf.keras.models.load_model("ludb_cnn_model.h5")
+    print("CNN model loaded successfully")
+except Exception as e:
+    print(f"Error loading CNN model: {str(e)}")
+    raise
+
+try:
+    print("Loading label encoder...")
+    label_encoder = joblib.load("label_encoder.pkl")
+    print("Label encoder loaded successfully")
+except Exception as e:
+    print(f"Error loading label encoder: {str(e)}")
+    raise
 
 # Target parameters
 TARGET_DURATION = 10  # seconds
