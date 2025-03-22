@@ -106,16 +106,24 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    // Display top 3 rhythms
-                    resultDiv.innerHTML = '<h3>Top 3 Rhythms:</h3>';
-                    const ul = document.createElement('ul');
-                    ul.className = 'rhythm-list';
-                    data.top_3_rhythms.forEach(rhythm => {
-                        const li = document.createElement('li');
-                        li.textContent = `${rhythm.rhythm} (Confidence: ${rhythm.confidence}, Model: ${rhythm.model})`;
-                        ul.appendChild(li);
-                    });
-                    resultDiv.appendChild(ul);
+                    // Check if the response has top_3_rhythms (new format) or best_rhythm (old format)
+                    if (data.top_3_rhythms) {
+                        // Display top 3 rhythms
+                        resultDiv.innerHTML = '<h3>Top 3 Rhythms:</h3>';
+                        const ul = document.createElement('ul');
+                        ul.className = 'rhythm-list';
+                        data.top_3_rhythms.forEach(rhythm => {
+                            const li = document.createElement('li');
+                            li.textContent = `${rhythm.rhythm} (Confidence: ${rhythm.confidence}, Model: ${rhythm.model})`;
+                            ul.appendChild(li);
+                        });
+                        resultDiv.appendChild(ul);
+                    } else if (data.best_rhythm) {
+                        // Fallback for old format
+                        resultDiv.textContent = `Best Rhythm: ${data.best_rhythm} (Confidence: ${data.confidence}, Model: ${data.model})`;
+                    } else {
+                        resultDiv.textContent = 'Error: Unexpected response format';
+                    }
 
                     // Display ECG plot
                     ecgPlotImg.src = `data:image/png;base64,${data.ecg_plot}`;
