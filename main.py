@@ -12,6 +12,7 @@ import uvicorn
 import matplotlib.pyplot as plt
 import io
 import base64
+from scipy.signal import resample  # For resampling signals
 
 app = FastAPI()
 
@@ -22,19 +23,40 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 rf_model = joblib.load("ludb_rf_model.pkl")
 label_encoder = joblib.load("label_encoder.pkl")
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    with open("static/index.html", "r") as f:
-        return f.read()
+# Target parameters for LUDB compatibility
+TARGET_DURATION = 10  # seconds
+TARGET_FS = 500  # Hz
+TARGET_SAMPLES = TARGET_DURATION * TARGET_FS  # 5000 samples per lead
+
+def standardize_signal(signals, original_fs):
+    """Resample and standardize ECG signal to 10 seconds at 500 Hz."""
+    current_samples = signals.shape[0]
+    current_duration = current_samples / original_fs
+
+    # Resample to 500 Hz
+    if original_fs != TARGET_FS:
+        num_samples_new = int(current_duration * TARGET_FS)  # New number of samples at 500 Hz
+        signals = resample(signals, num_samples_new, axis=0)
+
+    # Adjust to exactly 10 seconds (5000 samples at 500 Hz)
+    current_samples = signals.shape[0]
+    if current_samples > TARGET_SAMPLES:
+        # Truncate to first 10 seconds
+        signals = signals[:TARGET_SAMPLES, :]
+    elif current_samples < TARGET_SAMPLES:
+        # Pad with zeros to reach 10 seconds
+        pad_length = TARGET_SAMPLES - current_samples
+        signals = np.pad(signals, ((0, pad_length), (0, 0)), mode='constant', constant_values=0)
+
+    return signals
 
 def plot_ecg_signal(record):
     """Generate a plot of the 12-lead ECG signal and return it as a base64 string."""
-    signals = record.p_signal  # Shape: (samples, 12)
-    lead_names = record.sig_name  # List of lead names (e.g., ['I', 'II', ...])
+    signals = record.p_signal  # Original signal for plotting
+    lead_names = record.sig_name
     num_samples = signals.shape[0]
-    time = np.arange(num_samples) / record.fs  # Time axis in seconds
+    time = np.arange(num_samples) / record.fs
 
-    # Create a 12-subplot figure (one for each lead)
     fig, axes = plt.subplots(12, 1, figsize=(10, 12), sharex=True)
     for i in range(12):
         axes[i].plot(time, signals[:, i], label=lead_names[i])
@@ -43,13 +65,17 @@ def plot_ecg_signal(record):
     axes[-1].set_xlabel("Time (s)")
     plt.tight_layout()
 
-    # Save plot to a BytesIO buffer and encode as base64
     buf = io.BytesIO()
     plt.savefig(buf, format="png", dpi=100)
     buf.seek(0)
     img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    plt.close(fig)  # Close the figure to free memory
+    plt.close(fig)
     return img_base64
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
+    with open("static/index.html", "r") as f:
+        return f.read()
 
 @app.post("/classify-ecg/")
 async def classify_ecg(
@@ -84,9 +110,11 @@ async def classify_ecg(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error processing ECG files: {str(e)}")
 
+        # Standardize the signal length and frequency
+        signals = standardize_signal(record.p_signal, record.fs)
+
         # Extract 12-lead signals for prediction
-        signals = record.p_signal  # Shape: (samples, 12)
-        flattened_signal = signals.flatten()
+        flattened_signal = signals.flatten()  # Always 60,000 values (5000 * 12)
 
         # Encode sex (M=1, F=0)
         sex_encoded = 1 if sex == "M" else 0
@@ -98,7 +126,7 @@ async def classify_ecg(
         prediction = rf_model.predict(combined_features)
         rhythm = label_encoder.inverse_transform(prediction)[0]
 
-        # Generate ECG plot
+        # Generate ECG plot (use original record for plotting)
         ecg_plot_base64 = plot_ecg_signal(record)
 
         # Return both the rhythm and the plot
