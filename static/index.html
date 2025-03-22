@@ -37,15 +37,6 @@
             margin-top: 20px;
             max-width: 100%;
         }
-        label {
-            display: inline-block;
-            width: 100px;
-            text-align: right;
-            margin-right: 10px;
-        }
-        input[type="text"], select {
-            margin-bottom: 10px;
-        }
         ul {
             list-style: none;
             padding: 0;
@@ -65,21 +56,8 @@
 <body>
     <div class="container">
         <h1>ECG Classification</h1>
-        <p>Please provide the following information and upload the files:</p>
+        <p>Please upload the following files:</p>
         <form id="uploadForm" enctype="multipart/form-data">
-            <div>
-                <label for="sex">Sex:</label>
-                <select name="sex" id="sex" required>
-                    <option value="">Select Sex</option>
-                    <option value="M">Male</option>
-                    <option value="F">Female</option>
-                </select>
-            </div>
-            <div>
-                <label for="age">Age:</label>
-                <input type="number" name="age" id="age" min="0" max="150" required placeholder="Enter age">
-            </div>
-            <p>Upload the following files:</p>
             <ul>
                 <li>1 Header File (.hea) <input type="file" name="hea_file" accept=".hea" required></li>
                 <li>1 Data File (.dat) <input type="file" name="dat_file" accept=".dat" required></li>
@@ -105,7 +83,7 @@
 
             progressBar.style.display = 'block';
             resultDiv.textContent = '';
-            ecgPlotImg.style.display = 'none'; // Hide plot until new one is ready
+            ecgPlotImg.style.display = 'none';
 
             // Simulate progress
             let percentage = 0;

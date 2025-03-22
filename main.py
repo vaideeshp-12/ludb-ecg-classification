@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import os
@@ -12,7 +12,7 @@ import uvicorn
 import matplotlib.pyplot as plt
 import io
 import base64
-from scipy.signal import resample  # For resampling signals
+from scipy.signal import resample
 
 app = FastAPI()
 
@@ -35,7 +35,7 @@ def standardize_signal(signals, original_fs):
 
     # Resample to 500 Hz
     if original_fs != TARGET_FS:
-        num_samples_new = int(current_duration * TARGET_FS)  # New number of samples at 500 Hz
+        num_samples_new = int(current_duration * TARGET_FS)
         signals = resample(signals, num_samples_new, axis=0)
 
     # Adjust to exactly 10 seconds (5000 samples at 500 Hz)
@@ -50,12 +50,10 @@ def standardize_signal(signals, original_fs):
 
     return signals
 
-def plot_ecg_signal(record):
-    """Generate a plot of the 12-lead ECG signal and return it as a base64 string."""
-    signals = record.p_signal  # Original signal for plotting
-    lead_names = record.sig_name
-    num_samples = signals.shape[0]
-    time = np.arange(num_samples) / record.fs
+def plot_ecg_signal(signals, lead_names):
+    """Generate a plot of the standardized 12-lead ECG signal and return it as a base64 string."""
+    num_samples = signals.shape[0]  # Should be 5000 after standardization
+    time = np.arange(num_samples) / TARGET_FS  # Time axis in seconds at 500 Hz
 
     fig, axes = plt.subplots(12, 1, figsize=(10, 12), sharex=True)
     for i in range(12):
@@ -80,19 +78,8 @@ async def read_root():
 @app.post("/classify-ecg/")
 async def classify_ecg(
     dat_file: UploadFile = File(...),
-    hea_file: UploadFile = File(...),
-    sex: str = Form(...),
-    age: float = Form(...)
+    hea_file: UploadFile = File(...)
 ):
-    # Validate sex input
-    sex = sex.strip().upper()
-    if sex not in ["M", "F"]:
-        raise HTTPException(status_code=400, detail="Sex must be 'M' or 'F'.")
-
-    # Validate age input
-    if age < 0 or age > 150:
-        raise HTTPException(status_code=400, detail="Age must be between 0 and 150.")
-
     # Create temporary directory to store uploaded files
     with tempfile.TemporaryDirectory() as temp_dir:
         # Save uploaded files
@@ -116,18 +103,12 @@ async def classify_ecg(
         # Extract 12-lead signals for prediction
         flattened_signal = signals.flatten()  # Always 60,000 values (5000 * 12)
 
-        # Encode sex (M=1, F=0)
-        sex_encoded = 1 if sex == "M" else 0
-
-        # Combine features with user-provided sex and age
-        combined_features = np.concatenate([flattened_signal, [sex_encoded, age]]).reshape(1, -1)
-
-        # Predict rhythm
-        prediction = rf_model.predict(combined_features)
+        # Predict rhythm (no sex or age features)
+        prediction = rf_model.predict(flattened_signal.reshape(1, -1))
         rhythm = label_encoder.inverse_transform(prediction)[0]
 
-        # Generate ECG plot (use original record for plotting)
-        ecg_plot_base64 = plot_ecg_signal(record)
+        # Generate ECG plot using the standardized signal
+        ecg_plot_base64 = plot_ecg_signal(signals, record.sig_name)
 
         # Return both the rhythm and the plot
         return {"rhythm": rhythm, "ecg_plot": ecg_plot_base64}
