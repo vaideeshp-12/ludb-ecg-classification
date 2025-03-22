@@ -74,7 +74,8 @@ gcloud run deploy ecg-classification \
   --platform managed \
   --allow-unauthenticated \
   --source .
-Access the app via the provided URL (e.g., https://ecg-classification-xyz-uc.a.run.app).
+Access the app via the provided URL
+https://ludb-ecg-classification-713000400110.us-central1.run.app/static/index.html
 
 Model Details
 Training Data: LUDB dataset (200 records, 12-lead ECGs, 500 Hz, 10 seconds).
