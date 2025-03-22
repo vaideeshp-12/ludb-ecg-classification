@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ECG Classification</title>
+    <title>LUDB ECG Classification</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -32,6 +32,7 @@
         #result {
             margin-top: 20px;
             font-weight: bold;
+            text-align: left;
         }
         #ecg-plot {
             margin-top: 20px;
@@ -51,11 +52,15 @@
         li input[type="file"] {
             margin-left: 20px;
         }
+        .rhythm-list {
+            list-style-type: decimal;
+            padding-left: 20px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>ECG Classification</h1>
+        <h1>LUDB ECG Classification</h1>
         <p>Please upload the following files:</p>
         <form id="uploadForm" enctype="multipart/form-data">
             <ul>
@@ -85,7 +90,6 @@
             resultDiv.textContent = '';
             ecgPlotImg.style.display = 'none';
 
-            // Simulate progress
             let percentage = 0;
             const interval = setInterval(() => {
                 percentage += 10;
@@ -102,7 +106,18 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    resultDiv.textContent = `Predicted Rhythm: ${data.rhythm}`;
+                    // Display top 3 rhythms
+                    resultDiv.innerHTML = '<h3>Top 3 Rhythms:</h3>';
+                    const ul = document.createElement('ul');
+                    ul.className = 'rhythm-list';
+                    data.top_3_rhythms.forEach(rhythm => {
+                        const li = document.createElement('li');
+                        li.textContent = `${rhythm.rhythm} (Confidence: ${rhythm.confidence}, Model: ${rhythm.model})`;
+                        ul.appendChild(li);
+                    });
+                    resultDiv.appendChild(ul);
+
+                    // Display ECG plot
                     ecgPlotImg.src = `data:image/png;base64,${data.ecg_plot}`;
                     ecgPlotImg.style.display = 'block';
                 } else {
