@@ -1,6 +1,6 @@
 LUDB ECG Classification
 This project is a web-based application for classifying 12-lead ECG signals using a Random Forest model trained on the Lobachevsky University Electrocardiography Database (LUDB). 
-Upload .dat and .hea files to predict the cardiac rhythm and view the ECG plot.
+Upload .dat and .hea files to predict the best 3 diagnoses possibilities of cardiac rhythm and view the ECG plot.
 
 Features
 Classifies ECG rhythms (e.g., Sinus rhythm, Atrial fibrillation).
@@ -79,7 +79,7 @@ https://ludb-ecg-classification-713000400110.us-central1.run.app/static/index.ht
 
 Model Details
 Training Data: LUDB dataset (200 records, 12-lead ECGs, 500 Hz, 10 seconds).
-Model: Random Forest Classifier.
+Models: Random Forest Classifier, Logistic regression, LSTM and CNN.
 Features: Flattened 12-lead ECG signal (60,000 values).
 Labels: 11 rhythm diagnoses (e.g., Sinus rhythm, Atrial fibrillation).
 Limitations
